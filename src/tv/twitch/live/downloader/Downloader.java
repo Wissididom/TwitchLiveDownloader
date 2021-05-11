@@ -115,6 +115,7 @@ public class Downloader {
 		command.add("ffplay");
 		if (!showBanner)
 			command.add("-hide_banner");
+		command.add("-autoexit");
 		command.add("-i");
 		command.add(Downloader.getUrl(url, printUrlToConsole));
 		ProcessBuilder pb = new ProcessBuilder(command.toArray(new String[command.size()]));
