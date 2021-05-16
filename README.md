@@ -19,14 +19,21 @@ This Tool is for downloading VODs and livestreams from https://www.twitch.tv/. C
 ## Show-Link-Mode
     TwitchLiveDownloader.jar show_url twitch-channel-or-vod-url
 
+## Copy-Link-Mode
+    TwitchLiveDownloader.jar copy_url twitch-channel-or-vod-url
+
 # Options
 ## Hide Usher-URL
-    TwitchLiveDownloader-command --hide_url
-    TwitchLiveDownloader-command -hu
+    <TwitchLiveDownloader-command> --hide_url
+    <TwitchLiveDownloader-command> -hu
 
 ## Hide FFMPEG-Banner
-    TwitchLiveDownloader-command --hide_banner
-    TwitchLiveDownloader-command -hb
+    <TwitchLiveDownloader-command> --hide_banner
+    <TwitchLiveDownloader-command> -hb
+
+## Wait for Streamer when he/she is offline
+    <TwitchLiveDownloader-command> --wait_for
+    <TwitchLiveDownloader-command> -wf
 
 # Workflow
 
