@@ -28,6 +28,7 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -435,7 +436,10 @@ public class Downloader {
 	}
 	
 	public static String getUrl(String url, boolean printUrlToConsole) throws IOException, JSONException {
+		if (url.contains("?"))
+			url = url.substring(0, url.indexOf('?'));
 		boolean isLive = !url.contains("/videos/");
+		boolean isClip = url.contains("clip");
 		String channel = url.replaceAll("^.+/(.+?)$", "$1");
 		String vodId = "";
 		if (!isLive) {
@@ -452,6 +456,22 @@ public class Downloader {
 			vodId = channel;
 			channel = videoInfo.getJSONObject("channel").getString("name");
 		}
+		if (isClip) {
+			/*HttpURLConnection connection = (HttpURLConnection) new URL("https://api.twitch.tv/kraken/clips/" + channel).openConnection();
+			connection.setRequestProperty("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0");
+			connection.setRequestProperty("Client-ID", "kimne78kx3ncx6brgo4mv6wki5h1ko");
+			connection.setRequestProperty("Accept", "application/vnd.twitchtv.v5+json");
+			System.out.println(connection.getResponseCode());
+			BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
+			String response = "";
+			String inputLine;
+			while ((inputLine = br.readLine()) != null)
+				response += inputLine + "\n";
+			JSONObject videoInfo = new JSONObject(response);
+			vodId = channel;
+			channel = videoInfo.getJSONObject("channel").getString("name");*/
+			vodId = channel;
+		}
 		HttpURLConnection connection = (HttpURLConnection) new URL("https://gql.twitch.tv/gql").openConnection();
 		connection.setDoInput(true);
 		connection.setDoOutput(true);
@@ -463,7 +483,10 @@ public class Downloader {
 		connection.setRequestProperty("DNT", "1");
 		connection.setRequestProperty("Sec-GPC", "1");
 		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(connection.getOutputStream(), "UTF-8"));
-		bw.write("{\"operationName\":\"PlaybackAccessToken_Template\",\"query\":\"query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) {  streamPlaybackAccessToken(channelName: $login, params: {platform: \\\"web\\\", playerBackend: \\\"mediaplayer\\\", playerType: $playerType}) @include(if: $isLive) {    value    signature    __typename  }  videoPlaybackAccessToken(id: $vodID, params: {platform: \\\"web\\\", playerBackend: \\\"mediaplayer\\\", playerType: $playerType}) @include(if: $isVod) {    value    signature    __typename  }}\",\"variables\":{\"isLive\":" + (isLive ? "true" : "false") + ",\"login\":\"" + channel + "\",\"isVod\":" + (!isLive ? "true" : "false") + ",\"vodID\":\"" + vodId + "\",\"playerType\":\"site\"}}");
+		if (isClip)
+			bw.write("[{\"operationName\":\"VideoAccessToken_Clip\",\"variables\":{\"slug\":\"" + vodId + "\"},\"extensions\":{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"36b89d2507fce29e5ca551df756d27c1cfe079e2609642b4390aa4c35796eb11\"}}}]");
+		else
+			bw.write("{\"operationName\":\"PlaybackAccessToken_Template\",\"query\":\"query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) {  streamPlaybackAccessToken(channelName: $login, params: {platform: \\\"web\\\", playerBackend: \\\"mediaplayer\\\", playerType: $playerType}) @include(if: $isLive) {    value    signature    __typename  }  videoPlaybackAccessToken(id: $vodID, params: {platform: \\\"web\\\", playerBackend: \\\"mediaplayer\\\", playerType: $playerType}) @include(if: $isVod) {    value    signature    __typename  }}\",\"variables\":{\"isLive\":" + (isLive ? "true" : "false") + ",\"login\":\"" + channel + "\",\"isVod\":" + (!isLive ? "true" : "false") + ",\"vodID\":\"" + vodId + "\",\"playerType\":\"site\"}}");
 		bw.flush();
 		bw.close();
 		BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
@@ -471,11 +494,36 @@ public class Downloader {
 		String inputLine;
 		while ((inputLine = br.readLine()) != null)
 			response += inputLine + "\n";
+		if (isClip)
+			response = "{\"array\": " + response + "}";
 		JSONObject gql = new JSONObject(response);
 		String signature;
 		String access_token;
 		try {
-			if (isLive) {
+			if (isClip) {
+				JSONObject clip = gql.getJSONArray("array").getJSONObject(0).getJSONObject("data").getJSONObject("clip");
+				JSONObject playbackAccessToken = clip.getJSONObject("playbackAccessToken");
+				signature = playbackAccessToken.getString("signature");
+				access_token = playbackAccessToken.getString("value");
+				JSONArray videoQualities = clip.getJSONArray("videoQualities");
+				int videoQualitiesAmount = videoQualities.length();
+				ClipVideoQuality[] qualities = new ClipVideoQuality[videoQualitiesAmount];
+				int lastQuality = 0;
+				int bestIndex = -1;
+				for (int i = 0; i < videoQualitiesAmount; i++) {
+					JSONObject videoQuality = videoQualities.getJSONObject(i);
+					int quality = videoQuality.getInt("quality");
+					if (lastQuality < quality) {
+						lastQuality = quality;
+						bestIndex = i;
+					}
+					String sourceURL = videoQuality.getString("sourceURL") + "?sig=" + signature + "&token=" + URLEncoder.encode(access_token, "UTF-8");
+					qualities[i] = new ClipVideoQuality(videoQuality.getInt("frameRate"), quality, sourceURL);
+				}
+				if (bestIndex < 0)
+					return null;
+				return qualities[bestIndex].getSourceURL();
+			} else if (isLive) {
 				JSONObject streamPlaybackAccessToken = gql.getJSONObject("data").getJSONObject("streamPlaybackAccessToken");
 				signature = streamPlaybackAccessToken.getString("signature");
 				access_token = streamPlaybackAccessToken.getString("value");
@@ -484,6 +532,15 @@ public class Downloader {
 				signature = videoPlaybackAccessToken.getString("signature");
 				access_token = videoPlaybackAccessToken.getString("value");
 			}
+			StringBuilder urlBuilder = new StringBuilder(isLive ? "https://usher.ttvnw.net/api/channel/hls/" : "https://usher.ttvnw.net/vod/");
+			urlBuilder.append(isLive ? channel : vodId).append(".m3u8?sig=").append(URLEncoder.encode(signature, "UTF-8"));
+			urlBuilder.append("&token=").append(URLEncoder.encode(access_token, "UTF-8"));
+			urlBuilder.append("&allow_source=true&fast_bread=true&cdm=wv&reassignments_supported=true");
+			urlBuilder.append("&playlist_include_framerate=true&player_backend=mediaplayer");
+			String result = urlBuilder.toString();
+			if (printUrlToConsole)
+				System.out.println("Download-URL: " + result);
+			return result;
 		} catch (JSONException ex) {
 			StringWriter sw = new StringWriter();
 			PrintWriter pw = new PrintWriter(sw);
@@ -492,14 +549,5 @@ public class Downloader {
 			Downloader.lastException = stacktrace;
 			return stacktrace;
 		}
-		StringBuilder urlBuilder = new StringBuilder(isLive ? "https://usher.ttvnw.net/api/channel/hls/" : "https://usher.ttvnw.net/vod/");
-		urlBuilder.append(isLive ? channel : vodId).append(".m3u8?sig=").append(URLEncoder.encode(signature, "UTF-8"));
-		urlBuilder.append("&token=").append(URLEncoder.encode(access_token, "UTF-8"));
-		urlBuilder.append("&allow_source=true&fast_bread=true&cdm=wv&reassignments_supported=true");
-		urlBuilder.append("&playlist_include_framerate=true&player_backend=mediaplayer");
-		String result = urlBuilder.toString();
-		if (printUrlToConsole)
-			System.out.println("Download-URL: " + result);
-		return result;
 	}
 }
