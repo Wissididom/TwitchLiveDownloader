@@ -1,7 +1,10 @@
+# This Repository is Archived
+
+This Repository still uses the Kraken API (apart from GraphQL), so it won't work anymore. You can try to use the [new version](https://github.com/Wissididom/TwitchDownloader) written in NodeJS instead.
+
 # Welcome to TwitchLiveDownloader!
 
 This Tool is for downloading VODs and livestreams from https://www.twitch.tv/. Commandlinesyntax following below:
-
 
 # Modes
 ## GUI-Mode
